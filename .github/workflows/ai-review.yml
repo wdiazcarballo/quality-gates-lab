@@ -17,36 +17,40 @@ jobs:
           fetch-depth: 0
 
       - name: Get PR Diff
-        id: diff
         run: |
           git diff origin/${{ github.base_ref }}...HEAD > diff.txt
-          # Escape special characters for JSON
-          DIFF_CONTENT=$(head -c 8000 diff.txt | jq -Rs .)
-          echo "diff=$DIFF_CONTENT" >> $GITHUB_OUTPUT
+          head -c 8000 diff.txt > diff_truncated.txt
 
       - name: AI Security Review (Gemini)
-        id: review
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          PROMPT="Review this code diff for security issues (OWASP Top 10), bugs, and best practices. Be concise and format as markdown.\n\nDiff:\n${{ steps.diff.outputs.diff }}"
+          # Create JSON payload file to avoid shell escaping issues
+          DIFF_CONTENT=$(cat diff_truncated.txt | jq -Rs .)
+
+          cat > payload.json << EOFPAYLOAD
+          {
+            "contents": [{
+              "parts": [{
+                "text": "Review this code diff for security issues (OWASP Top 10), bugs, and best practices. Be concise and format as markdown. Here is the diff:"
+              }, {
+                "text": $DIFF_CONTENT
+              }]
+            }]
+          }
+          EOFPAYLOAD
 
           RESPONSE=$(curl -s "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=$GEMINI_API_KEY" \
             -H "Content-Type: application/json" \
-            -d "{
-              \"contents\": [{
-                \"parts\": [{
-                  \"text\": ${{ steps.diff.outputs.diff }}
-                }, {
-                  \"text\": \"Review this code diff for security issues (OWASP Top 10), bugs, and best practices. Be concise and format as markdown.\"
-                }]
-              }]
-            }")
+            -d @payload.json)
 
-          REVIEW=$(echo "$RESPONSE" | jq -r '.candidates[0].content.parts[0].text // "Review failed - check API key"')
+          echo "$RESPONSE" | jq -r '.candidates[0].content.parts[0].text // "Review failed - check API key"' > review.txt
 
-          # Save to file to handle multiline
-          echo "$REVIEW" > review.txt
+          # Debug: show response if review failed
+          if grep -q "Review failed" review.txt; then
+            echo "API Response:"
+            echo "$RESPONSE" | jq .
+          fi
 
       - name: Post Review Comment
         uses: actions/github-script@v7
@@ -57,10 +61,10 @@ jobs:
 
             const body = `## 🤖 AI Code Review (Gemini)
 
-            ${review}
+${review}
 
-            ---
-            *Automated review - treat as suggestions. Human reviewer should verify.*`;
+---
+*Automated review - treat as suggestions. Human reviewer should verify.*`;
 
             github.rest.issues.createComment({
               owner: context.repo.owner,
