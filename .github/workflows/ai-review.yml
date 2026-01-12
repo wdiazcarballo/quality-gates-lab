@@ -21,30 +21,37 @@ jobs:
           git diff origin/${{ github.base_ref }}...HEAD > diff.txt
           head -c 8000 diff.txt > diff_truncated.txt
 
-      - name: AI Security Review (Gemini)
+      - name: AI Security Review (GLM-4)
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
         run: |
-          # Create JSON payload file to avoid shell escaping issues
           DIFF_CONTENT=$(cat diff_truncated.txt | jq -Rs .)
 
-          cat > payload.json << EOFPAYLOAD
+          cat > payload.json << 'EOFPAYLOAD'
           {
-            "contents": [{
-              "parts": [{
-                "text": "Review this code diff for security issues (OWASP Top 10), bugs, and best practices. Be concise and format as markdown. Here is the diff:"
-              }, {
-                "text": $DIFF_CONTENT
-              }]
-            }]
+            "model": "glm-4-flash",
+            "messages": [
+              {
+                "role": "system",
+                "content": "You are a code review assistant. Review code for security issues (OWASP Top 10), bugs, and best practices. Be concise and format as markdown."
+              },
+              {
+                "role": "user",
+                "content": "Review this code diff:\n\nDIFF_PLACEHOLDER"
+              }
+            ]
           }
           EOFPAYLOAD
 
-          RESPONSE=$(curl -s "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=$GEMINI_API_KEY" \
-            -H "Content-Type: application/json" \
-            -d @payload.json)
+          # Replace placeholder with actual diff content
+          jq --arg diff "$(cat diff_truncated.txt)" '.messages[1].content = "Review this code diff:\n\n" + $diff' payload.json > payload_final.json
 
-          echo "$RESPONSE" | jq -r '.candidates[0].content.parts[0].text // "Review failed - check API key"' > review.txt
+          RESPONSE=$(curl -s "https://open.bigmodel.cn/api/paas/v4/chat/completions" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $ZHIPU_API_KEY" \
+            -d @payload_final.json)
+
+          echo "$RESPONSE" | jq -r '.choices[0].message.content // "Review failed - check API key"' > review.txt
 
           # Debug: show response if review failed
           if grep -q "Review failed" review.txt; then
@@ -59,7 +66,7 @@ jobs:
             const fs = require('fs');
             const review = fs.readFileSync('review.txt', 'utf8');
 
-            const body = '## 🤖 AI Code Review (Gemini)\n\n' +
+            const body = '## 🤖 AI Code Review (GLM-4)\n\n' +
               review +
               '\n\n---\n*Automated review - treat as suggestions. Human reviewer should verify.*';
 
