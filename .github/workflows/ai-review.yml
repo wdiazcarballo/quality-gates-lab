@@ -1,0 +1,74 @@
+name: AI Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  ai-review:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get PR Diff
+        run: |
+          git diff origin/${{ github.base_ref }}...HEAD > diff.txt
+          head -c 8000 diff.txt > diff_truncated.txt
+
+      - name: AI Security Review (Gemini)
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          # Create JSON payload file to avoid shell escaping issues
+          DIFF_CONTENT=$(cat diff_truncated.txt | jq -Rs .)
+
+          cat > payload.json << EOFPAYLOAD
+          {
+            "contents": [{
+              "parts": [{
+                "text": "Review this code diff for security issues (OWASP Top 10), bugs, and best practices. Be concise and format as markdown. Here is the diff:"
+              }, {
+                "text": $DIFF_CONTENT
+              }]
+            }]
+          }
+          EOFPAYLOAD
+
+          RESPONSE=$(curl -s "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=$GEMINI_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d @payload.json)
+
+          echo "$RESPONSE" | jq -r '.candidates[0].content.parts[0].text // "Review failed - check API key"' > review.txt
+
+          # Debug: show response if review failed
+          if grep -q "Review failed" review.txt; then
+            echo "API Response:"
+            echo "$RESPONSE" | jq .
+          fi
+
+      - name: Post Review Comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const review = fs.readFileSync('review.txt', 'utf8');
+
+            const body = `## 🤖 AI Code Review (Gemini)
+
+${review}
+
+---
+*Automated review - treat as suggestions. Human reviewer should verify.*`;
+
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: body
+            });
