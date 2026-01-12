@@ -20,47 +20,51 @@ jobs:
         id: diff
         run: |
           git diff origin/${{ github.base_ref }}...HEAD > diff.txt
-          echo "diff<<EOF" >> $GITHUB_OUTPUT
-          head -c 10000 diff.txt >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          # Escape special characters for JSON
+          DIFF_CONTENT=$(head -c 8000 diff.txt | jq -Rs .)
+          echo "diff=$DIFF_CONTENT" >> $GITHUB_OUTPUT
 
-      - name: AI Security Review
+      - name: AI Security Review (Gemini)
         id: review
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          RESPONSE=$(curl -s https://api.anthropic.com/v1/messages \
+          PROMPT="Review this code diff for security issues (OWASP Top 10), bugs, and best practices. Be concise and format as markdown.\n\nDiff:\n${{ steps.diff.outputs.diff }}"
+
+          RESPONSE=$(curl -s "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=$GEMINI_API_KEY" \
             -H "Content-Type: application/json" \
-            -H "x-api-key: $ANTHROPIC_API_KEY" \
-            -H "anthropic-version: 2023-06-01" \
             -d "{
-              \"model\": \"claude-sonnet-4-20250514\",
-              \"max_tokens\": 1500,
-              \"messages\": [{
-                \"role\": \"user\",
-                \"content\": \"Review this code diff for security issues (OWASP Top 10), bugs, and best practices. Be concise.\n\nDiff:\n${{ steps.diff.outputs.diff }}\"
+              \"contents\": [{
+                \"parts\": [{
+                  \"text\": ${{ steps.diff.outputs.diff }}
+                }, {
+                  \"text\": \"Review this code diff for security issues (OWASP Top 10), bugs, and best practices. Be concise and format as markdown.\"
+                }]
               }]
             }")
 
-          REVIEW=$(echo "$RESPONSE" | jq -r '.content[0].text // "Review failed"')
-          echo "review<<EOF" >> $GITHUB_OUTPUT
-          echo "$REVIEW" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          REVIEW=$(echo "$RESPONSE" | jq -r '.candidates[0].content.parts[0].text // "Review failed - check API key"')
+
+          # Save to file to handle multiline
+          echo "$REVIEW" > review.txt
 
       - name: Post Review Comment
         uses: actions/github-script@v7
         with:
           script: |
-            const review = `## AI Code Review
+            const fs = require('fs');
+            const review = fs.readFileSync('review.txt', 'utf8');
 
-            ${{ steps.review.outputs.review }}
+            const body = `## 🤖 AI Code Review (Gemini)
+
+            ${review}
 
             ---
-            *Automated review - treat as suggestions*`;
+            *Automated review - treat as suggestions. Human reviewer should verify.*`;
 
             github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
-              body: review
+              body: body
             });
