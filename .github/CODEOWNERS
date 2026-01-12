@@ -1,0 +1,26 @@
+# ===================================
+# CODEOWNERS - Define owners for each section
+# ===================================
+
+# Default: Team lead must review all files
+* @wdiazcarballo
+
+# Frontend (React/Vite)
+/frontend/ @wdiazcarballo
+
+# Backend (Node/Express)
+/backend/ @wdiazcarballo
+
+# Infrastructure - Be extra careful
+/infra/ @wdiazcarballo
+
+# Security-Critical - Requires team lead approval
+/backend/src/auth/ @wdiazcarballo
+/backend/src/middleware/ @wdiazcarballo
+
+# Documentation
+/docs/ @wdiazcarballo
+*.md @wdiazcarballo
+
+# CI/CD Configuration
+/.github/workflows/ @wdiazcarballo
