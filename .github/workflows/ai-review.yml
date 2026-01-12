@@ -21,15 +21,13 @@ jobs:
           git diff origin/${{ github.base_ref }}...HEAD > diff.txt
           head -c 8000 diff.txt > diff_truncated.txt
 
-      - name: AI Security Review (GLM-4)
+      - name: AI Security Review (z.AI GLM-4.6)
         env:
-          ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
+          ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
         run: |
-          DIFF_CONTENT=$(cat diff_truncated.txt | jq -Rs .)
-
           cat > payload.json << 'EOFPAYLOAD'
           {
-            "model": "glm-4",
+            "model": "GLM-4.6",
             "messages": [
               {
                 "role": "system",
@@ -37,18 +35,18 @@ jobs:
               },
               {
                 "role": "user",
-                "content": "Review this code diff:\n\nDIFF_PLACEHOLDER"
+                "content": "DIFF_PLACEHOLDER"
               }
             ]
           }
           EOFPAYLOAD
 
           # Replace placeholder with actual diff content
-          jq --arg diff "$(cat diff_truncated.txt)" '.messages[1].content = "Review this code diff:\n\n" + $diff' payload.json > payload_final.json
+          jq --arg diff "Review this code diff:\n\n$(cat diff_truncated.txt)" '.messages[1].content = $diff' payload.json > payload_final.json
 
-          RESPONSE=$(curl -s "https://open.bigmodel.cn/api/paas/v4/chat/completions" \
+          RESPONSE=$(curl -s "https://api.z.ai/api/paas/v4/chat/completions" \
             -H "Content-Type: application/json" \
-            -H "Authorization: Bearer $ZHIPU_API_KEY" \
+            -H "Authorization: Bearer $ZAI_API_KEY" \
             -d @payload_final.json)
 
           echo "$RESPONSE" | jq -r '.choices[0].message.content // "Review failed - check API key"' > review.txt
@@ -66,7 +64,7 @@ jobs:
             const fs = require('fs');
             const review = fs.readFileSync('review.txt', 'utf8');
 
-            const body = '## 🤖 AI Code Review (GLM-4)\n\n' +
+            const body = '## 🤖 AI Code Review (z.AI GLM-4.6)\n\n' +
               review +
               '\n\n---\n*Automated review - treat as suggestions. Human reviewer should verify.*';
 
