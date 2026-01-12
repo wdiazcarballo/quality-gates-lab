@@ -59,12 +59,9 @@ jobs:
             const fs = require('fs');
             const review = fs.readFileSync('review.txt', 'utf8');
 
-            const body = `## 🤖 AI Code Review (Gemini)
-
-${review}
-
----
-*Automated review - treat as suggestions. Human reviewer should verify.*`;
+            const body = '## 🤖 AI Code Review (Gemini)\n\n' +
+              review +
+              '\n\n---\n*Automated review - treat as suggestions. Human reviewer should verify.*';
 
             github.rest.issues.createComment({
               owner: context.repo.owner,
