@@ -29,7 +29,7 @@ jobs:
 
           cat > payload.json << 'EOFPAYLOAD'
           {
-            "model": "glm-4-flash",
+            "model": "glm-4",
             "messages": [
               {
                 "role": "system",
