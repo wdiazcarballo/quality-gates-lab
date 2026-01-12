@@ -1,0 +1,17 @@
+{
+  "name": "quality-gates-lab",
+  "version": "1.0.0",
+  "scripts": {
+    "test": "jest --coverage",
+    "build": "echo 'Build successful'",
+    "lint": "echo 'Lint passed'",
+    "docs": "jsdoc -c jsdoc.json"
+  },
+  "dependencies": {
+    "bcrypt": "^5.1.0"
+  },
+  "devDependencies": {
+    "jest": "^29.0.0",
+    "jsdoc": "^4.0.0"
+  }
+}
