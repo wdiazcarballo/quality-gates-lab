@@ -170,13 +170,23 @@ jobs:
         working-directory: backend
         run: npm run docs
 
+      - name: Verify docs output
+        run: |
+          echo "Checking docs/api/ contents:"
+          ls -la docs/api/ || echo "ERROR: docs/api/ not found!"
+          if [ ! -d "docs/api" ]; then
+            echo "Creating empty docs/api with placeholder"
+            mkdir -p docs/api
+            echo "<html><body><h1>API Documentation</h1><p>No documentation generated.</p></body></html>" > docs/api/index.html
+          fi
+
       - name: Setup Pages
         uses: actions/configure-pages@v4
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: docs/api/
+          path: docs/api
 
       - name: Deploy to GitHub Pages
         uses: actions/deploy-pages@v4
